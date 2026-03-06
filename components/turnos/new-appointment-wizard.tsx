@@ -486,14 +486,14 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                     <div className="space-y-2">
                       <Label>Obra social</Label>
                       <Select 
-                        value={newPatient.obraSocialRnos} 
-                        onValueChange={(v) => setNewPatient(p => ({ ...p, obraSocialRnos: v }))}
+                        value={newPatient.obraSocialRnos || 'none'} 
+                        onValueChange={(v) => setNewPatient(p => ({ ...p, obraSocialRnos: v === 'none' ? '' : v }))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Sin obra social" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Sin obra social</SelectItem>
+                          <SelectItem value="none">Sin obra social</SelectItem>
                           {obrasSociales.map(os => (
                             <SelectItem key={os.rnos} value={os.rnos}>{os.nombre}</SelectItem>
                           ))}
