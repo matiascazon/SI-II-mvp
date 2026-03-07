@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AlertTriangle, Calendar, Clock, User, Stethoscope, CreditCard, X, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Calendar, Clock, User, Stethoscope, CreditCard, X, RefreshCw, DollarSign } from 'lucide-react'
 import { useData } from '@/lib/data-context'
 import { formatDateLong, getHoursUntil } from '@/lib/date-utils'
 import type { Turno } from '@/lib/types'
@@ -17,31 +17,34 @@ interface AppointmentDetailProps {
   turno: Turno
   open: boolean
   onOpenChange: (open: boolean) => void
+  onReschedule: (turno: Turno) => void
 }
 
-export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDetailProps) {
+export function AppointmentDetail({ turno, open, onOpenChange, onReschedule }: AppointmentDetailProps) {
   const { getPacienteByDni, getKinesiologoByDni, getTratamientoByNombre, getObraSocialByRnos, saveTurno, getCobroByTurnoId, saveCobro } = useData()
-  
+
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [cancelInput, setCancelInput] = useState('')
-  const [showReschedule, setShowReschedule] = useState(false)
-  
+  const [showPaymentForm, setShowPaymentForm] = useState(false)
+  const [monto, setMonto] = useState('')
+  const [coseguro, setCoseguro] = useState('0')
+
   const paciente = getPacienteByDni(turno.dniPaciente)
   const kinesiologo = getKinesiologoByDni(turno.dniKinesiologo)
   const tratamiento = getTratamientoByNombre(turno.tratamiento)
   const obraSocial = paciente?.obraSocialRnos ? getObraSocialByRnos(paciente.obraSocialRnos) : null
   const cobro = getCobroByTurnoId(turno.id)
-  
+
   const hoursRemaining = getHoursUntil(turno.fecha, turno.hora)
   const reimbursementPercent = hoursRemaining > 48 ? 100 : 50
   const reimbursementAmount = tratamiento ? (tratamiento.precioPorSesion * reimbursementPercent / 100) : 0
 
   const handleCancel = () => {
     if (cancelInput !== 'CANCELAR') return
-    
+
     const updatedTurno: Turno = { ...turno, estado: 'cancelado' }
     saveTurno(updatedTurno)
-    
+
     // Update cobro if exists
     if (cobro) {
       saveCobro({
@@ -50,27 +53,56 @@ export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDeta
         estado: 'reembolsado'
       })
     }
-    
+
     toast.success('Turno cancelado', {
-      description: reimbursementPercent === 100 
+      description: reimbursementPercent === 100
         ? 'Se reembolsará el 100% del monto'
         : 'Se reembolsará el 50% del monto'
     })
-    
+
     setShowCancelConfirm(false)
     setCancelInput('')
     onOpenChange(false)
   }
 
+  const handleRegisterPayment = () => {
+    const cobroData = {
+      id: Math.random().toString(36).substr(2, 9),
+      turnoId: turno.id,
+      monto: parseInt(monto) || 0,
+      coseguro: parseInt(coseguro) || 0,
+      fecha: new Date().toISOString().split('T')[0],
+      reembolso: null,
+      estado: 'cobrado' as const
+    }
+
+    saveCobro(cobroData)
+
+    // Update appointment status to confirmed if it was pending
+    if (turno.estado === 'pendiente') {
+      saveTurno({ ...turno, estado: 'confirmado' })
+    }
+
+    toast.success('Pago registrado con éxito')
+    setShowPaymentForm(false)
+  }
+
+  const handleOpenPayment = () => {
+    if (tratamiento) {
+      setMonto(tratamiento.precioPorSesion.toString())
+    }
+    setShowPaymentForm(true)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[650px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Detalle del turno
             <Badge variant={
-              turno.estado === 'confirmado' ? 'default' : 
-              turno.estado === 'pendiente' ? 'secondary' : 'destructive'
+              turno.estado === 'confirmado' ? 'default' :
+                turno.estado === 'pendiente' ? 'secondary' : 'destructive'
             }>
               {turno.estado === 'pendiente' && 'Pendiente de pago'}
               {turno.estado === 'confirmado' && 'Confirmado'}
@@ -81,7 +113,7 @@ export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDeta
             {formatDateLong(turno.fecha)} a las {turno.hora}
           </DialogDescription>
         </DialogHeader>
-        
+
         {!showCancelConfirm ? (
           <div className="space-y-4">
             {/* Patient Info */}
@@ -97,7 +129,7 @@ export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDeta
                 )}
               </div>
             </div>
-            
+
             {/* Professional Info */}
             <div className="flex items-start gap-3 p-3 bg-muted rounded-lg">
               <Stethoscope className="h-5 w-5 text-muted-foreground mt-0.5" />
@@ -110,7 +142,7 @@ export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDeta
                 </div>
               </div>
             </div>
-            
+
             {/* Appointment Details */}
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-start gap-3 p-3 bg-muted rounded-lg">
@@ -128,7 +160,7 @@ export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDeta
                 </div>
               </div>
             </div>
-            
+
             {/* Treatment & Price */}
             <div className="flex items-start gap-3 p-3 bg-muted rounded-lg">
               <CreditCard className="h-5 w-5 text-muted-foreground mt-0.5" />
@@ -145,13 +177,13 @@ export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDeta
                 </div>
               </div>
             </div>
-            
+
             {/* Motivo */}
             <div className="p-3 bg-muted rounded-lg">
               <p className="text-sm text-muted-foreground">Motivo de consulta</p>
               <p className="mt-1">{turno.motivoConsulta}</p>
             </div>
-            
+
             {/* Orden médica */}
             {turno.ordenMedica && (
               <div className="p-3 bg-muted rounded-lg">
@@ -159,25 +191,104 @@ export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDeta
                 <p className="mt-1">{turno.ordenMedica}</p>
               </div>
             )}
-            
+
             {/* Actions */}
-            {turno.estado !== 'cancelado' && (
+            {turno.estado !== 'cancelado' && !cobro && !showPaymentForm && (
               <div className="flex gap-2 pt-4 border-t">
-                <Button 
-                  variant="outline" 
+                <Button
+                  className="flex-1 bg-success hover:bg-success/90"
+                  onClick={handleOpenPayment}
+                >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Registrar cobro
+                </Button>
+                <Button
+                  variant="outline"
                   className="flex-1"
-                  onClick={() => setShowReschedule(true)}
+                  onClick={() => onReschedule(turno)}
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Reprogramar
                 </Button>
-                <Button 
-                  variant="destructive" 
+                <Button
+                  variant="destructive"
                   className="flex-1"
                   onClick={() => setShowCancelConfirm(true)}
                 >
                   <X className="h-4 w-4 mr-2" />
-                  Cancelar turno
+                  Cancelar
+                </Button>
+              </div>
+            )}
+
+            {showPaymentForm && (
+              <div className="space-y-4 pt-4 border-t animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2 text-primary font-medium">
+                  <DollarSign className="h-5 w-5" />
+                  Registrar Cobro
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Monto cobrado *</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                      <Input
+                        value={monto}
+                        onChange={(e) => setMonto(e.target.value.replace(/\D/g, ''))}
+                        className="pl-7"
+                      />
+                    </div>
+                  </div>
+                  {!paciente?.obraSocialRnos ? null : (
+                    <div className="space-y-2">
+                      <Label>Coseguro</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                        <Input
+                          value={coseguro}
+                          onChange={(e) => setCoseguro(e.target.value.replace(/\D/g, ''))}
+                          className="pl-7"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setShowPaymentForm(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    className="flex-1 bg-success hover:bg-success/90"
+                    onClick={handleRegisterPayment}
+                    disabled={!monto || parseInt(monto) <= 0}
+                  >
+                    Confirmar Pago
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {turno.estado !== 'cancelado' && (cobro || showPaymentForm) && !showPaymentForm && (
+              <div className="flex gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => onReschedule(turno)}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Reprogramar
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => setShowCancelConfirm(true)}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Cancelar
                 </Button>
               </div>
             )}
@@ -199,7 +310,7 @@ export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDeta
                 </div>
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label>Escribí CANCELAR para confirmar</Label>
               <Input
@@ -208,10 +319,10 @@ export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDeta
                 placeholder="CANCELAR"
               />
             </div>
-            
+
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="flex-1"
                 onClick={() => {
                   setShowCancelConfirm(false)
@@ -220,8 +331,8 @@ export function AppointmentDetail({ turno, open, onOpenChange }: AppointmentDeta
               >
                 Volver
               </Button>
-              <Button 
-                variant="destructive" 
+              <Button
+                variant="destructive"
                 className="flex-1"
                 onClick={handleCancel}
                 disabled={cancelInput !== 'CANCELAR'}

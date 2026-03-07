@@ -20,17 +20,17 @@ interface RegisterPaymentDialogProps {
 }
 
 export function RegisterPaymentDialog({ open, onOpenChange }: RegisterPaymentDialogProps) {
-  const { 
-    turnos, 
-    getPacienteByDni, 
-    getKinesiologoByDni, 
+  const {
+    turnos,
+    getPacienteByDni,
+    getKinesiologoByDni,
     getTratamientoByNombre,
     getObraSocialByRnos,
     getCobroByTurnoId,
     saveCobro,
     saveTurno
   } = useData()
-  
+
   const [searchDni, setSearchDni] = useState('')
   const [searchDate, setSearchDate] = useState('')
   const [selectedTurno, setSelectedTurno] = useState<Turno | null>(null)
@@ -40,11 +40,11 @@ export function RegisterPaymentDialog({ open, onOpenChange }: RegisterPaymentDia
   // Search for pending turnos
   const pendingTurnos = useMemo(() => {
     return turnos.filter(t => {
-      const matchesDni = !searchDni || t.dniPaciente.includes(searchDni)
+      const matchesDni = !searchDni || t.dniPaciente.startsWith(searchDni)
       const matchesDate = !searchDate || t.fecha === searchDate
-      const isPending = t.estado === 'pendiente'
       const noCobro = !getCobroByTurnoId(t.id)
-      return matchesDni && matchesDate && isPending && noCobro
+      const notCancelled = t.estado !== 'cancelado'
+      return matchesDni && matchesDate && noCobro && notCancelled
     }).sort((a, b) => b.fecha.localeCompare(a.fecha))
   }, [turnos, searchDni, searchDate, getCobroByTurnoId])
 
@@ -58,7 +58,7 @@ export function RegisterPaymentDialog({ open, onOpenChange }: RegisterPaymentDia
 
   const handleSave = () => {
     if (!selectedTurno) return
-    
+
     const cobro: Cobro = {
       id: generateId(),
       turnoId: selectedTurno.id,
@@ -68,18 +68,18 @@ export function RegisterPaymentDialog({ open, onOpenChange }: RegisterPaymentDia
       reembolso: null,
       estado: 'cobrado'
     }
-    
+
     saveCobro(cobro)
-    
+
     // Update turno status
     const updatedTurno: Turno = { ...selectedTurno, estado: 'confirmado' }
     saveTurno(updatedTurno)
-    
+
     const paciente = getPacienteByDni(selectedTurno.dniPaciente)
     toast.success('Pago registrado', {
       description: `Cobro de $${parseInt(monto).toLocaleString('es-AR')} a ${paciente?.nombre} ${paciente?.apellido}`
     })
-    
+
     // Reset and close
     setSearchDni('')
     setSearchDate('')
@@ -96,7 +96,7 @@ export function RegisterPaymentDialog({ open, onOpenChange }: RegisterPaymentDia
           <DialogTitle>Registrar cobro</DialogTitle>
           <DialogDescription>Busca un turno pendiente de pago para registrar el cobro</DialogDescription>
         </DialogHeader>
-        
+
         {!selectedTurno ? (
           <div className="space-y-4">
             {/* Search filters */}
@@ -122,11 +122,11 @@ export function RegisterPaymentDialog({ open, onOpenChange }: RegisterPaymentDia
                 />
               </div>
             </div>
-            
+
             {/* Results */}
             <div className="space-y-2">
               <Label>Turnos pendientes de pago ({pendingTurnos.length})</Label>
-              
+
               {pendingTurnos.length === 0 ? (
                 <div className="p-8 text-center border rounded-lg">
                   <DollarSign className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
@@ -138,7 +138,7 @@ export function RegisterPaymentDialog({ open, onOpenChange }: RegisterPaymentDia
                     const paciente = getPacienteByDni(turno.dniPaciente)
                     const kinesiologo = getKinesiologoByDni(turno.dniKinesiologo)
                     const tratamiento = getTratamientoByNombre(turno.tratamiento)
-                    
+
                     return (
                       <div
                         key={turno.id}
@@ -194,7 +194,7 @@ export function RegisterPaymentDialog({ open, onOpenChange }: RegisterPaymentDia
                 </div>
               </div>
             </div>
-            
+
             {/* Payment form */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -208,7 +208,7 @@ export function RegisterPaymentDialog({ open, onOpenChange }: RegisterPaymentDia
                   />
                 </div>
               </div>
-              
+
               {!selectedTurno.esParticular && (
                 <div className="space-y-2">
                   <Label>Coseguro</Label>
@@ -223,16 +223,16 @@ export function RegisterPaymentDialog({ open, onOpenChange }: RegisterPaymentDia
                 </div>
               )}
             </div>
-            
+
             <div className="flex gap-2 pt-4 border-t">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="flex-1"
                 onClick={() => setSelectedTurno(null)}
               >
                 Volver
               </Button>
-              <Button 
+              <Button
                 className="flex-1"
                 onClick={handleSave}
                 disabled={!monto || parseInt(monto) <= 0}

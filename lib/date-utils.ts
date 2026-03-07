@@ -1,4 +1,4 @@
-import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, parseISO, isToday, isBefore, isAfter, differenceInHours } from 'date-fns'
+import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, parseISO, isToday, isBefore, isAfter, differenceInHours, startOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 
 export const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
@@ -54,6 +54,28 @@ export function isFutureDate(date: Date | string): boolean {
   return isAfter(d, new Date())
 }
 
+export function isPastDateTime(date: Date | string, timeStr: string): boolean {
+  const d = typeof date === 'string' ? parseISO(date) : date
+  const now = new Date()
+
+  // Use startOfDay to compare dates without time/timezone shifting issues
+  const today = startOfDay(now)
+  const checkDate = startOfDay(d)
+
+  if (checkDate < today) return true
+  if (checkDate > today) return false
+
+  // If it's today, check time
+  const [hours, minutes] = timeStr.split(':').map(Number)
+  const currentHours = now.getHours()
+  const currentMinutes = now.getMinutes()
+
+  if (hours < currentHours) return true
+  if (hours === currentHours && minutes <= currentMinutes) return true
+
+  return false
+}
+
 export function getHoursUntil(dateStr: string, timeStr: string): number {
   const [hours, minutes] = timeStr.split(':').map(Number)
   const appointmentDate = parseISO(dateStr)
@@ -65,17 +87,17 @@ export function generateTimeSlots(startTime: string, endTime: string, durationMi
   const slots: string[] = []
   const [startH, startM] = startTime.split(':').map(Number)
   const [endH, endM] = endTime.split(':').map(Number)
-  
+
   let currentMinutes = startH * 60 + startM
   const endMinutes = endH * 60 + endM
-  
+
   while (currentMinutes + durationMinutes <= endMinutes) {
     const h = Math.floor(currentMinutes / 60)
     const m = currentMinutes % 60
     slots.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`)
     currentMinutes += durationMinutes
   }
-  
+
   return slots
 }
 
@@ -101,7 +123,7 @@ export function doTimesOverlap(
   const e1 = s1 + duration1
   const s2 = timeToMinutes(start2)
   const e2 = s2 + duration2
-  
+
   return s1 < e2 && s2 < e1
 }
 

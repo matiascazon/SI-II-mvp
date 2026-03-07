@@ -18,7 +18,7 @@ import { es } from 'date-fns/locale'
 
 export default function CobrosPage() {
   const { cobros, turnos, isLoading, getPacienteByDni, getKinesiologoByDni, getTratamientoByNombre } = useData()
-  
+
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [showRegisterPayment, setShowRegisterPayment] = useState(false)
   const [selectedReceipt, setSelectedReceipt] = useState<Cobro | null>(null)
@@ -39,14 +39,18 @@ export default function CobrosPage() {
     const total = dayCobros.reduce((sum, c) => sum + c.monto, 0)
     const totalCoseguros = dayCobros.reduce((sum, c) => sum + c.coseguro, 0)
     const reembolsos = dayCobros.filter(c => c.estado === 'reembolsado').reduce((sum, c) => sum + (c.reembolso || 0), 0)
-    
+
+    // Global total (all time)
+    const totalGlobal = cobros.reduce((sum, c) => sum + c.monto - (c.reembolso || 0), 0)
+
     return {
       total,
       totalCoseguros,
       reembolsos,
+      totalGlobal,
       turnosAtendidos: dayTurnos.filter(t => t.estado === 'confirmado').length
     }
-  }, [dayCobros, dayTurnos])
+  }, [dayCobros, dayTurnos, cobros])
 
   const goToday = () => setSelectedDate(new Date())
   const goPrev = () => setSelectedDate(d => subDays(d, 1))
@@ -99,20 +103,30 @@ export default function CobrosPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <Card className="bg-primary/5 border-primary/20">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total cobrado</CardTitle>
+            <CardTitle className="text-sm font-medium text-primary">Caja Actual</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-primary">
+              ${summary.totalGlobal.toLocaleString('es-AR')}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total hoy</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-foreground">
               ${summary.total.toLocaleString('es-AR')}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total coseguros</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Coseguros hoy</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-foreground">
@@ -122,7 +136,7 @@ export default function CobrosPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Turnos atendidos</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Turnos hoy</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-foreground">{summary.turnosAtendidos}</p>
@@ -130,7 +144,7 @@ export default function CobrosPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Reembolsos</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Reembolsos hoy</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-destructive">
@@ -173,7 +187,7 @@ export default function CobrosPage() {
                 const turno = turnos.find(t => t.id === cobro.turnoId)
                 const paciente = turno ? getPacienteByDni(turno.dniPaciente) : null
                 const kinesiologo = turno ? getKinesiologoByDni(turno.dniKinesiologo) : null
-                
+
                 return (
                   <tr key={cobro.id} className="border-t border-border hover:bg-muted/50 transition-colors">
                     <td className="p-3 text-sm font-medium">{turno?.hora || '-'}</td>
@@ -192,8 +206,8 @@ export default function CobrosPage() {
                       </Badge>
                     </td>
                     <td className="p-3 text-right">
-                      <Button 
-                        variant="ghost" 
+                      <Button
+                        variant="ghost"
                         size="sm"
                         onClick={() => setSelectedReceipt(cobro)}
                       >

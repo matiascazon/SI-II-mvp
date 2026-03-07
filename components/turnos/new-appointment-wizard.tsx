@@ -8,9 +8,9 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Check, ChevronLeft, ChevronRight, AlertTriangle, CheckCircle, User, Calendar, Stethoscope, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, AlertTriangle, CheckCircle, User, Calendar, Stethoscope, X, RefreshCw } from 'lucide-react'
 import { useData } from '@/lib/data-context'
-import { formatDate, formatDateLong, getDayNameCapitalized, generateTimeSlots, DIAS_SEMANA } from '@/lib/date-utils'
+import { formatDate, formatDateLong, getDayNameCapitalized, generateTimeSlots, DIAS_SEMANA, isPastDateTime, doTimesOverlap } from '@/lib/date-utils'
 import { generateId } from '@/lib/storage'
 import type { Kinesiologo, Paciente, Turno } from '@/lib/types'
 import { toast } from 'sonner'
@@ -21,10 +21,11 @@ interface NewAppointmentWizardProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   preselectedSlot?: {
-    kinesiologo: Kinesiologo
     fecha: string
     hora: string
+    kinesiologo?: Kinesiologo | null
   } | null
+  turnoToReschedule?: Turno | null
 }
 
 const STEPS = [
@@ -34,12 +35,12 @@ const STEPS = [
   { id: 4, label: 'Confirmación', icon: Check },
 ]
 
-export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: NewAppointmentWizardProps) {
-  const { 
-    activeKinesiologos, 
-    getHorarioByKinesiologo, 
-    pacientes, 
-    getPacienteByDni, 
+export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turnoToReschedule }: NewAppointmentWizardProps) {
+  const {
+    activeKinesiologos,
+    getHorarioByKinesiologo,
+    pacientes,
+    getPacienteByDni,
     savePaciente,
     obrasSociales,
     getObraSocialByRnos,
@@ -49,13 +50,15 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
     saveTurno,
     saveCobro
   } = useData()
-  
+
   const [currentStep, setCurrentStep] = useState(1)
-  
+  const isRescheduling = !!turnoToReschedule
+  const [hasInitialized, setHasInitialized] = useState(false)
+
   // Step 1: Professional
   const [selectedKinesiologo, setSelectedKinesiologo] = useState<Kinesiologo | null>(null)
   const [selectedTratamiento, setSelectedTratamiento] = useState<string>('')
-  
+
   // Step 2: Patient
   const [dniSearch, setDniSearch] = useState('')
   const [foundPaciente, setFoundPaciente] = useState<Paciente | null>(null)
@@ -69,7 +72,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
     numeroAfiliado: ''
   })
   const [patientErrors, setPatientErrors] = useState<Record<string, string>>({})
-  
+
   // Step 3: Date/Time
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [selectedTime, setSelectedTime] = useState<string>('')
@@ -79,16 +82,47 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
 
   // Compatibility check
   const [obraSocialCompatible, setObraSocialCompatible] = useState<boolean | null>(null)
-  
-  // Initialize with preselected slot
+
+  // Reset initialization flag when wizard closes
   useEffect(() => {
-    if (preselectedSlot && open) {
-      setSelectedKinesiologo(preselectedSlot.kinesiologo)
+    if (!open) {
+      setHasInitialized(false)
+    }
+  }, [open])
+
+  // Initialize with preselected slot or rescheduling turno
+  useEffect(() => {
+    if (!open || hasInitialized) return
+
+    if (preselectedSlot) {
       setSelectedDate(preselectedSlot.fecha)
       setSelectedTime(preselectedSlot.hora)
+      if (preselectedSlot.kinesiologo) {
+        setSelectedKinesiologo(preselectedSlot.kinesiologo)
+      } else {
+        setSelectedKinesiologo(null)
+      }
       setCurrentStep(1)
+      setHasInitialized(true)
     }
-  }, [preselectedSlot, open])
+
+    if (turnoToReschedule) {
+      const k = activeKinesiologos.find(k => k.dni === turnoToReschedule.dniKinesiologo)
+      if (k) setSelectedKinesiologo(k)
+      setSelectedTratamiento(turnoToReschedule.tratamiento)
+      setDniSearch(turnoToReschedule.dniPaciente)
+      setMotivoConsulta(turnoToReschedule.motivoConsulta)
+      setOrdenMedica(turnoToReschedule.ordenMedica || '')
+      setSelectedDate(turnoToReschedule.fecha)
+      setSelectedTime(turnoToReschedule.hora)
+
+      const pac = getPacienteByDni(turnoToReschedule.dniPaciente)
+      if (pac) setFoundPaciente(pac)
+
+      setCurrentStep(3) // Jump directly to date/time selection
+      setHasInitialized(true)
+    }
+  }, [preselectedSlot, turnoToReschedule, open, hasInitialized, activeKinesiologos, getPacienteByDni])
 
   // Check obra social compatibility
   useEffect(() => {
@@ -114,7 +148,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
 
   const validateNewPatient = (): boolean => {
     const errors: Record<string, string> = {}
-    
+
     if (!newPatient.nombre || newPatient.nombre.length < 2) {
       errors.nombre = 'El nombre es obligatorio (mínimo 2 caracteres)'
     }
@@ -130,14 +164,14 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
     if (newPatient.obraSocialRnos && !newPatient.numeroAfiliado) {
       errors.numeroAfiliado = 'El número de afiliado es obligatorio si tiene obra social'
     }
-    
+
     setPatientErrors(errors)
     return Object.keys(errors).length === 0
   }
 
   const handleSaveNewPatient = () => {
     if (!validateNewPatient()) return
-    
+
     const paciente: Paciente = {
       dni: dniSearch,
       nombre: newPatient.nombre,
@@ -147,7 +181,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
       obraSocialRnos: newPatient.obraSocialRnos || null,
       numeroAfiliado: newPatient.numeroAfiliado || null
     }
-    
+
     savePaciente(paciente)
     setFoundPaciente(paciente)
     setShowNewPatientForm(false)
@@ -174,30 +208,44 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
   // Get available time slots for selected date
   const availableTimeSlots = useMemo(() => {
     if (!selectedKinesiologo || !selectedDate || !selectedTratamiento) return []
-    
+
     const horario = getHorarioByKinesiologo(selectedKinesiologo.dni)
     if (!horario) return []
-    
+
     const dateObj = new Date(selectedDate + 'T00:00:00')
     const dayName = getDayNameCapitalized(dateObj)
     const daySchedule = horario.disponibilidad.find(d => d.dia === dayName)
     if (!daySchedule) return []
-    
+
     const tratamiento = getTratamientoByNombre(selectedTratamiento)
     if (!tratamiento) return []
-    
-    const allSlots = generateTimeSlots(daySchedule.horaInicio, daySchedule.horaFin, tratamiento.duracionMinutos)
-    
-    // Filter out booked slots
-    const bookedTimes = turnos
-      .filter(t => t.fecha === selectedDate && t.dniKinesiologo === selectedKinesiologo.dni && t.estado !== 'cancelado')
-      .map(t => t.hora)
-    
-    return allSlots.map(slot => ({
-      time: slot,
-      isBooked: bookedTimes.includes(slot)
-    }))
-  }, [selectedKinesiologo, selectedDate, selectedTratamiento, turnos, getHorarioByKinesiologo, getTratamientoByNombre])
+
+    const kSlots = generateTimeSlots(daySchedule.horaInicio, daySchedule.horaFin, tratamiento.duracionMinutos)
+
+    // Get existing turnos for this kinesiologo and date
+    const dayTurnos = turnos.filter(t =>
+      t.fecha === selectedDate &&
+      t.dniKinesiologo === selectedKinesiologo.dni &&
+      t.estado !== 'cancelado' &&
+      (!turnoToReschedule || t.id !== turnoToReschedule.id)
+    )
+
+    return kSlots.map(time => {
+      const isPast = isPastDateTime(selectedDate, time)
+
+      // A slot is blocked if it overlaps with ANY existing turno
+      const isOverlapping = dayTurnos.some(t => {
+        const tTratamiento = getTratamientoByNombre(t.tratamiento)
+        const tDuration = tTratamiento?.duracionMinutos || 30 // Fallback to 30 if not found
+        return doTimesOverlap(time, tratamiento.duracionMinutos, t.hora, tDuration)
+      })
+
+      return {
+        time,
+        isBooked: isOverlapping || isPast
+      }
+    })
+  }, [selectedKinesiologo, selectedTratamiento, selectedDate, turnos, getHorarioByKinesiologo, getTratamientoByNombre, turnoToReschedule])
 
   const canProceed = (step: number): boolean => {
     switch (step) {
@@ -215,12 +263,12 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
 
   const handleConfirm = () => {
     if (!selectedKinesiologo || !foundPaciente || !selectedDate || !selectedTime) return
-    
+
     const tratamiento = getTratamientoByNombre(selectedTratamiento)
     const isParticular = !foundPaciente.obraSocialRnos || !obraSocialCompatible
-    
+
     const turno: Turno = {
-      id: generateId(),
+      id: isRescheduling ? turnoToReschedule!.id : generateId(),
       dniPaciente: foundPaciente.dni,
       dniKinesiologo: selectedKinesiologo.dni,
       tratamiento: selectedTratamiento,
@@ -228,17 +276,17 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
       hora: selectedTime,
       motivoConsulta,
       ordenMedica: ordenMedica || null,
-      estado: isParticular ? 'pendiente' : 'confirmado',
+      estado: isRescheduling ? turnoToReschedule!.estado : 'pendiente',
       esParticular: isParticular,
-      createdAt: new Date().toISOString()
+      createdAt: isRescheduling ? turnoToReschedule!.createdAt : new Date().toISOString()
     }
-    
+
     saveTurno(turno)
-    
-    toast.success('Turno agendado', {
+
+    toast.success(isRescheduling ? 'Turno reprogramado' : 'Turno agendado', {
       description: `${foundPaciente.nombre} ${foundPaciente.apellido} - ${formatDateLong(selectedDate)} a las ${selectedTime}`
     })
-    
+
     // Reset and close
     resetForm()
     onOpenChange(false)
@@ -273,19 +321,23 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); onOpenChange(o) }}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[850px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nuevo turno</DialogTitle>
-          <DialogDescription>Completá los pasos para agendar un turno</DialogDescription>
+          <DialogTitle>{isRescheduling ? 'Reprogramar turno' : 'Nuevo turno'}</DialogTitle>
+          <DialogDescription>
+            {isRescheduling
+              ? `Cambiando el horario para ${foundPaciente?.nombre} ${foundPaciente?.apellido}`
+              : 'Completá los pasos para agendar un turno'}
+          </DialogDescription>
         </DialogHeader>
-        
+
         {/* Step Indicator */}
         <div className="flex items-center justify-between mb-6">
           {STEPS.map((step, index) => {
             const Icon = step.icon
             const isActive = currentStep === step.id
             const isComplete = currentStep > step.id
-            
+
             return (
               <div key={step.id} className="flex items-center">
                 <div className={cn(
@@ -323,15 +375,44 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                 <Label className="text-base font-semibold">Seleccionar profesional</Label>
                 <p className="text-sm text-muted-foreground">Elegí el kinesiólogo que atenderá al paciente</p>
               </div>
-              
+
               <div className="grid gap-3">
-                {activeKinesiologos.map(k => (
+                {activeKinesiologos.filter(k => {
+                  // If we have a preselected slot, filter by availability
+                  if (preselectedSlot && (currentStep === 1 || isRescheduling)) {
+                    const hor = getHorarioByKinesiologo(k.dni)
+                    if (!hor) return false
+                    const dateObj = new Date(preselectedSlot.fecha + 'T12:00:00')
+                    const dayName = getDayNameCapitalized(dateObj)
+                    const daySched = hor.disponibilidad.find(d => d.dia === dayName)
+                    if (!daySched) return false
+
+                    const slotHour = parseInt(preselectedSlot.hora.split(':')[0])
+                    const startH = parseInt(daySched.horaInicio.split(':')[0])
+                    const endH = parseInt(daySched.horaFin.split(':')[0])
+
+                    // Check if working at this hour
+                    const isWorkingAtHour = slotHour >= startH && slotHour < endH
+                    if (!isWorkingAtHour) return false
+
+                    // Check if already booked at this hour
+                    const isBooked = turnos.some(t =>
+                      t.dniKinesiologo === k.dni &&
+                      t.fecha === preselectedSlot.fecha &&
+                      t.estado !== 'cancelado' &&
+                      parseInt(t.hora.split(':')[0]) === slotHour
+                    )
+
+                    return !isBooked
+                  }
+                  return true
+                }).map(k => (
                   <div
                     key={k.dni}
                     className={cn(
                       'p-4 rounded-lg border-2 cursor-pointer transition-all',
-                      selectedKinesiologo?.dni === k.dni 
-                        ? 'border-primary bg-primary/5' 
+                      selectedKinesiologo?.dni === k.dni
+                        ? 'border-primary bg-primary/5'
                         : 'border-border hover:border-primary/50'
                     )}
                     onClick={() => setSelectedKinesiologo(k)}
@@ -355,7 +436,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                   </div>
                 ))}
               </div>
-              
+
               {selectedKinesiologo && (
                 <div className="space-y-2 pt-4 border-t">
                   <Label>Tratamiento</Label>
@@ -364,7 +445,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                       <SelectValue placeholder="Seleccionar tratamiento" />
                     </SelectTrigger>
                     <SelectContent>
-                      {tratamientos.filter(t => 
+                      {tratamientos.filter(t =>
                         selectedKinesiologo.especialidades.includes(t.nombre) || t.nombre === 'Entrevista inicial'
                       ).map(t => (
                         <SelectItem key={t.nombre} value={t.nombre}>
@@ -385,7 +466,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                 <Label className="text-base font-semibold">Buscar paciente por DNI</Label>
                 <p className="text-sm text-muted-foreground">Ingresá el DNI del paciente para buscarlo</p>
               </div>
-              
+
               <div className="space-y-2">
                 <Label>DNI *</Label>
                 <Input
@@ -395,7 +476,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                   maxLength={8}
                 />
               </div>
-              
+
               {foundPaciente && (
                 <div className="p-4 rounded-lg bg-success/10 border border-success/20">
                   <div className="flex items-center gap-2 text-success mb-2">
@@ -407,14 +488,14 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                   {obraSocial && (
                     <Badge variant="outline" className="mt-2">{obraSocial.nombre}</Badge>
                   )}
-                  
+
                   {obraSocialCompatible === true && (
                     <div className="mt-3 p-2 bg-success/10 rounded flex items-center gap-2 text-success text-sm">
                       <CheckCircle className="h-4 w-4" />
                       Cobertura compatible con el profesional
                     </div>
                   )}
-                  
+
                   {obraSocialCompatible === false && (
                     <div className="mt-3 p-2 bg-warning/10 rounded flex items-center gap-2 text-warning text-sm">
                       <AlertTriangle className="h-4 w-4" />
@@ -423,7 +504,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                   )}
                 </div>
               )}
-              
+
               {showNewPatientForm && dniSearch.length >= 7 && (
                 <div className="p-4 rounded-lg border border-border space-y-4">
                   <div className="flex items-center justify-between">
@@ -435,13 +516,16 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Nombre *</Label>
                       <Input
                         value={newPatient.nombre}
-                        onChange={(e) => setNewPatient(p => ({ ...p, nombre: e.target.value }))}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
+                          setNewPatient(p => ({ ...p, nombre: val }))
+                        }}
                         className={patientErrors.nombre ? 'border-destructive' : ''}
                       />
                       {patientErrors.nombre && (
@@ -452,7 +536,10 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                       <Label>Apellido *</Label>
                       <Input
                         value={newPatient.apellido}
-                        onChange={(e) => setNewPatient(p => ({ ...p, apellido: e.target.value }))}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
+                          setNewPatient(p => ({ ...p, apellido: val }))
+                        }}
                         className={patientErrors.apellido ? 'border-destructive' : ''}
                       />
                       {patientErrors.apellido && (
@@ -485,8 +572,8 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                     </div>
                     <div className="space-y-2">
                       <Label>Obra social</Label>
-                      <Select 
-                        value={newPatient.obraSocialRnos || 'none'} 
+                      <Select
+                        value={newPatient.obraSocialRnos || 'none'}
                         onValueChange={(v) => setNewPatient(p => ({ ...p, obraSocialRnos: v === 'none' ? '' : v }))}
                       >
                         <SelectTrigger>
@@ -514,7 +601,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                       </div>
                     )}
                   </div>
-                  
+
                   <Button onClick={handleSaveNewPatient} className="w-full">
                     Guardar paciente y continuar
                   </Button>
@@ -530,11 +617,11 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                 <Label className="text-base font-semibold">Elegir fecha y hora</Label>
                 <p className="text-sm text-muted-foreground">Seleccioná un día y horario disponible</p>
               </div>
-              
+
               {/* Calendar Navigation */}
               <div className="flex items-center justify-between mb-2">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => setDateViewStart(d => addDays(d, -7))}
                 >
@@ -543,15 +630,15 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                 <span className="text-sm font-medium">
                   {format(dateViewStart, 'MMMM yyyy')}
                 </span>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => setDateViewStart(d => addDays(d, 7))}
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
-              
+
               {/* Calendar Grid */}
               <div className="grid grid-cols-7 gap-1">
                 {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => (
@@ -562,9 +649,12 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                 {calendarDates.slice(0, 28).map(date => {
                   const dateStr = formatDate(date)
                   const dayName = getDayNameCapitalized(date)
-                  const isAvailable = availableDays.includes(dayName) && date >= new Date()
+
+                  // A day is "available" if the professional works that day AND it's not starting in the past
+                  // We check against 23:59 of that day to see if the WHOLE day is past
+                  const isAvailable = availableDays.includes(dayName) && !isPastDateTime(date, '23:59')
                   const isSelected = selectedDate === dateStr
-                  
+
                   return (
                     <button
                       key={dateStr}
@@ -582,7 +672,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                   )
                 })}
               </div>
-              
+
               {/* Time Slots */}
               {selectedDate && (
                 <div className="space-y-2 pt-4 border-t">
@@ -609,7 +699,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                   )}
                 </div>
               )}
-              
+
               {/* Motivo y Orden médica */}
               {selectedTime && (
                 <div className="space-y-4 pt-4 border-t">
@@ -622,7 +712,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                       rows={2}
                     />
                   </div>
-                  
+
                   {foundPaciente?.obraSocialRnos && obraSocialCompatible && (
                     <div className="space-y-2">
                       <Label>Orden médica *</Label>
@@ -645,7 +735,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
                 <Label className="text-base font-semibold">Confirmar turno</Label>
                 <p className="text-sm text-muted-foreground">Revisá los datos antes de confirmar</p>
               </div>
-              
+
               <div className="p-4 rounded-lg bg-muted space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Profesional</span>
@@ -710,7 +800,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
             <ChevronLeft className="h-4 w-4 mr-2" />
             Corregir
           </Button>
-          
+
           {currentStep < 4 ? (
             <Button
               onClick={() => setCurrentStep(s => s + 1)}
@@ -721,8 +811,8 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot }: Ne
             </Button>
           ) : (
             <Button onClick={handleConfirm}>
-              Confirmar turno
-              <Check className="h-4 w-4 ml-2" />
+              {isRescheduling ? 'Reprogramar turno' : 'Confirmar turno'}
+              {isRescheduling ? <RefreshCw className="h-4 w-4 ml-2" /> : <Check className="h-4 w-4 ml-2" />}
             </Button>
           )}
         </div>

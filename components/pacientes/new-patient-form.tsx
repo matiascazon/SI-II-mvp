@@ -36,7 +36,7 @@ interface FieldState {
 
 export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
   const { obrasSociales, getPacienteByDni, savePaciente } = useData()
-  
+
   const [formData, setFormData] = useState<FormData>({
     dni: '',
     nombre: '',
@@ -46,7 +46,7 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
     obraSocialRnos: '',
     numeroAfiliado: ''
   })
-  
+
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [dniExists, setDniExists] = useState(false)
@@ -103,9 +103,12 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
 
   const handleChange = (field: string, value: string) => {
     let processedValue = value
-    
+
     if (field === 'dni' || field === 'telefono') {
       processedValue = value.replace(/\D/g, '')
+    }
+    if (field === 'nombre' || field === 'apellido') {
+      processedValue = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
     }
     if (field === 'dni') {
       processedValue = processedValue.slice(0, 8)
@@ -113,9 +116,9 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
     if (field === 'telefono') {
       processedValue = processedValue.slice(0, 10)
     }
-    
+
     setFormData(d => ({ ...d, [field]: processedValue }))
-    
+
     // Real-time validation for format errors
     if (touched[field]) {
       const error = validateField(field, processedValue)
@@ -124,10 +127,11 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
   }
 
   const handleObraSocialChange = (value: string) => {
-    setFormData(d => ({ 
-      ...d, 
-      obraSocialRnos: value,
-      numeroAfiliado: value ? d.numeroAfiliado : ''
+    const obraSocialRnos = value === 'particular' ? '' : value
+    setFormData(d => ({
+      ...d,
+      obraSocialRnos: obraSocialRnos,
+      numeroAfiliado: obraSocialRnos ? d.numeroAfiliado : ''
     }))
   }
 
@@ -136,12 +140,12 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
     if (formData.obraSocialRnos) {
       requiredFields.push('numeroAfiliado')
     }
-    
+
     for (const field of requiredFields) {
       const error = validateField(field, formData[field as keyof FormData])
       if (error) return false
     }
-    
+
     return !dniExists
   }
 
@@ -149,17 +153,17 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
     // Touch all fields
     const allTouched: Record<string, boolean> = {}
     const allErrors: Record<string, string> = {}
-    
+
     Object.keys(formData).forEach(field => {
       allTouched[field] = true
       allErrors[field] = validateField(field, formData[field as keyof FormData])
     })
-    
+
     setTouched(allTouched)
     setErrors(allErrors)
-    
+
     if (!isFormValid()) return
-    
+
     const paciente: Paciente = {
       dni: formData.dni,
       nombre: formData.nombre,
@@ -169,12 +173,12 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
       obraSocialRnos: formData.obraSocialRnos || null,
       numeroAfiliado: formData.numeroAfiliado || null
     }
-    
+
     savePaciente(paciente)
     toast.success('Paciente registrado', {
       description: `${paciente.nombre} ${paciente.apellido} ha sido agregado`
     })
-    
+
     // Reset and close
     setFormData({
       dni: '',
@@ -194,7 +198,7 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
     const isTouched = touched[field]
     const error = errors[field]
     const value = formData[field as keyof FormData]
-    
+
     return {
       showError: isTouched && !!error,
       showSuccess: isTouched && !error && !!value,
@@ -204,12 +208,12 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[650px]">
         <DialogHeader>
           <DialogTitle>Nuevo paciente</DialogTitle>
           <DialogDescription>Completá los datos para registrar un nuevo paciente</DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4">
           {/* DNI */}
           <div className="space-y-2">
@@ -325,12 +329,12 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
           {/* Obra Social */}
           <div className="space-y-2">
             <Label>Obra social</Label>
-            <Select value={formData.obraSocialRnos} onValueChange={handleObraSocialChange}>
+            <Select value={formData.obraSocialRnos || 'particular'} onValueChange={handleObraSocialChange}>
               <SelectTrigger>
                 <SelectValue placeholder="Sin obra social (particular)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Sin obra social</SelectItem>
+                <SelectItem value="particular">Sin obra social</SelectItem>
                 {obrasSociales.map(os => (
                   <SelectItem key={os.rnos} value={os.rnos}>{os.nombre}</SelectItem>
                 ))}
@@ -363,8 +367,8 @@ export function NewPatientForm({ open, onOpenChange }: NewPatientFormProps) {
             </div>
           )}
 
-          <Button 
-            onClick={handleSubmit} 
+          <Button
+            onClick={handleSubmit}
             className="w-full"
             disabled={!isFormValid()}
           >

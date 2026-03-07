@@ -22,17 +22,17 @@ interface PatientDetailProps {
 }
 
 export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailProps) {
-  const { 
-    getObraSocialByRnos, 
-    obrasSociales, 
-    getTurnosByPaciente, 
+  const {
+    getObraSocialByRnos,
+    obrasSociales,
+    getTurnosByPaciente,
     getKinesiologoByDni,
     getTratamientoByNombre,
     getCobroByTurnoId,
     cobros,
-    savePaciente 
+    savePaciente
   } = useData()
-  
+
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({
     telefono: paciente.telefono,
@@ -41,10 +41,10 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const obraSocial = paciente.obraSocialRnos 
-    ? getObraSocialByRnos(paciente.obraSocialRnos) 
+  const obraSocial = paciente.obraSocialRnos
+    ? getObraSocialByRnos(paciente.obraSocialRnos)
     : null
-  
+
   const turnos = getTurnosByPaciente(paciente.dni).sort((a, b) => {
     if (a.fecha !== b.fecha) return b.fecha.localeCompare(a.fecha)
     return b.hora.localeCompare(a.hora)
@@ -57,26 +57,26 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
 
   const handleSave = () => {
     const newErrors: Record<string, string> = {}
-    
+
     if (editData.telefono.length !== 10) {
       newErrors.telefono = 'El teléfono debe tener 10 dígitos'
     }
     if (editData.obraSocialRnos && !editData.numeroAfiliado) {
       newErrors.numeroAfiliado = 'El número de afiliado es obligatorio'
     }
-    
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
       return
     }
-    
+
     const updatedPaciente: Paciente = {
       ...paciente,
       telefono: editData.telefono,
       obraSocialRnos: editData.obraSocialRnos || null,
       numeroAfiliado: editData.numeroAfiliado || null
     }
-    
+
     savePaciente(updatedPaciente)
     setIsEditing(false)
     setErrors({})
@@ -107,14 +107,14 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
             </div>
           </SheetTitle>
         </SheetHeader>
-        
+
         <Tabs defaultValue="datos" className="mt-6">
           <TabsList className="w-full">
             <TabsTrigger value="datos" className="flex-1">Datos</TabsTrigger>
             <TabsTrigger value="turnos" className="flex-1">Turnos</TabsTrigger>
             <TabsTrigger value="cobros" className="flex-1">Cobros</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="datos" className="mt-4 space-y-4">
             {!isEditing ? (
               <>
@@ -126,7 +126,7 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
                       <p className="font-medium">{paciente.telefono}</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
                     <Calendar className="h-5 w-5 text-muted-foreground" />
                     <div>
@@ -134,7 +134,7 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
                       <p className="font-medium">{formatDate(paciente.fechaNacimiento, 'd MMMM yyyy')}</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
                     <Building className="h-5 w-5 text-muted-foreground" />
                     <div>
@@ -150,7 +150,7 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
                     </div>
                   </div>
                 </div>
-                
+
                 <Button variant="outline" className="w-full" onClick={() => setIsEditing(true)}>
                   <Pencil className="h-4 w-4 mr-2" />
                   Editar datos
@@ -169,25 +169,25 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
                     <p className="text-xs text-destructive">{errors.telefono}</p>
                   )}
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label>Obra social</Label>
-                  <Select 
-                    value={editData.obraSocialRnos} 
-                    onValueChange={(v) => setEditData(d => ({ ...d, obraSocialRnos: v }))}
+                  <Select
+                    value={editData.obraSocialRnos || 'particular'}
+                    onValueChange={(v) => setEditData(d => ({ ...d, obraSocialRnos: v === 'particular' ? '' : v }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Sin obra social" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Sin obra social</SelectItem>
+                      <SelectItem value="particular">Sin obra social</SelectItem>
                       {obrasSociales.map(os => (
                         <SelectItem key={os.rnos} value={os.rnos}>{os.nombre}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 {editData.obraSocialRnos && (
                   <div className="space-y-2">
                     <Label>Número de afiliado</Label>
@@ -201,7 +201,7 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
                     )}
                   </div>
                 )}
-                
+
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1" onClick={handleCancel}>
                     <X className="h-4 w-4 mr-2" />
@@ -215,7 +215,7 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
               </div>
             )}
           </TabsContent>
-          
+
           <TabsContent value="turnos" className="mt-4">
             {turnos.length === 0 ? (
               <div className="py-8 text-center">
@@ -227,10 +227,10 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
                 {turnos.map(turno => {
                   const kinesiologo = getKinesiologoByDni(turno.dniKinesiologo)
                   const isPast = isPastDate(turno.fecha)
-                  
+
                   return (
-                    <div 
-                      key={turno.id} 
+                    <div
+                      key={turno.id}
                       className={cn(
                         'p-3 rounded-lg border',
                         isPast && 'opacity-60'
@@ -241,8 +241,8 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
                           {formatDate(turno.fecha, 'EEE d MMM')} - {turno.hora}
                         </span>
                         <Badge variant={
-                          turno.estado === 'confirmado' ? 'default' : 
-                          turno.estado === 'pendiente' ? 'secondary' : 'destructive'
+                          turno.estado === 'confirmado' ? 'default' :
+                            turno.estado === 'pendiente' ? 'secondary' : 'destructive'
                         }>
                           {turno.estado}
                         </Badge>
@@ -257,7 +257,7 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
               </div>
             )}
           </TabsContent>
-          
+
           <TabsContent value="cobros" className="mt-4">
             {pacienteCobros.length === 0 ? (
               <div className="py-8 text-center">
@@ -268,7 +268,7 @@ export function PatientDetail({ paciente, open, onOpenChange }: PatientDetailPro
               <div className="space-y-2">
                 {pacienteCobros.map(cobro => {
                   const turno = turnos.find(t => t.id === cobro.turnoId)
-                  
+
                   return (
                     <div key={cobro.id} className="p-3 rounded-lg border">
                       <div className="flex items-center justify-between mb-1">

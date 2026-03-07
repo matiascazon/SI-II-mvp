@@ -33,9 +33,9 @@ const ESPECIALIDADES_DISPONIBLES = [
 
 export function KinesiologoForm({ open, onOpenChange, kinesiologo }: KinesiologoFormProps) {
   const { obrasSociales, saveKinesiologo, saveHorario, getHorarioByKinesiologo, getKinesiologoByDni } = useData()
-  
+
   const isEditing = !!kinesiologo
-  
+
   const [formData, setFormData] = useState({
     dni: '',
     nombre: '',
@@ -46,7 +46,7 @@ export function KinesiologoForm({ open, onOpenChange, kinesiologo }: Kinesiologo
     obrasSociales: [] as string[],
     activo: true
   })
-  
+
   const [horarios, setHorarios] = useState<DisponibilidadDia[]>([])
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -62,7 +62,7 @@ export function KinesiologoForm({ open, onOpenChange, kinesiologo }: Kinesiologo
         obrasSociales: kinesiologo.obrasSociales,
         activo: kinesiologo.activo
       })
-      
+
       const existingHorario = getHorarioByKinesiologo(kinesiologo.dni)
       if (existingHorario) {
         setHorarios(existingHorario.disponibilidad)
@@ -98,14 +98,14 @@ export function KinesiologoForm({ open, onOpenChange, kinesiologo }: Kinesiologo
   }
 
   const updateHorario = (dia: string, field: 'horaInicio' | 'horaFin', value: string) => {
-    setHorarios(horarios.map(h => 
+    setHorarios(horarios.map(h =>
       h.dia === dia ? { ...h, [field]: value } : h
     ))
   }
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {}
-    
+
     if (!formData.dni || !/^\d{7,8}$/.test(formData.dni)) {
       newErrors.dni = 'DNI inválido (7-8 dígitos)'
     }
@@ -123,14 +123,14 @@ export function KinesiologoForm({ open, onOpenChange, kinesiologo }: Kinesiologo
     if (formData.especialidades.length === 0) {
       newErrors.especialidades = 'Selecciona al menos una especialidad'
     }
-    
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = () => {
     if (!validate()) return
-    
+
     const kinesiologoData: Kinesiologo = {
       dni: formData.dni,
       nombre: formData.nombre,
@@ -141,9 +141,9 @@ export function KinesiologoForm({ open, onOpenChange, kinesiologo }: Kinesiologo
       obrasSociales: formData.obrasSociales,
       activo: formData.activo
     }
-    
+
     saveKinesiologo(kinesiologoData)
-    
+
     if (horarios.length > 0) {
       const horarioData: Horario = {
         dniKinesiologo: formData.dni,
@@ -151,18 +151,18 @@ export function KinesiologoForm({ open, onOpenChange, kinesiologo }: Kinesiologo
       }
       saveHorario(horarioData)
     }
-    
+
     toast.success(isEditing ? 'Kinesiólogo actualizado' : 'Kinesiólogo agregado')
     onOpenChange(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[850px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar kinesiólogo' : 'Nuevo kinesiólogo'}</DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-6">
           {/* Basic Info */}
           <div className="grid grid-cols-2 gap-4">
@@ -189,7 +189,10 @@ export function KinesiologoForm({ open, onOpenChange, kinesiologo }: Kinesiologo
               <Label>Nombre *</Label>
               <Input
                 value={formData.nombre}
-                onChange={(e) => setFormData(d => ({ ...d, nombre: e.target.value }))}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
+                  setFormData(d => ({ ...d, nombre: val }))
+                }}
                 className={errors.nombre ? 'border-destructive' : ''}
               />
               {errors.nombre && <p className="text-xs text-destructive">{errors.nombre}</p>}
@@ -198,7 +201,10 @@ export function KinesiologoForm({ open, onOpenChange, kinesiologo }: Kinesiologo
               <Label>Apellido *</Label>
               <Input
                 value={formData.apellido}
-                onChange={(e) => setFormData(d => ({ ...d, apellido: e.target.value }))}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '')
+                  setFormData(d => ({ ...d, apellido: val }))
+                }}
                 className={errors.apellido ? 'border-destructive' : ''}
               />
               {errors.apellido && <p className="text-xs text-destructive">{errors.apellido}</p>}
@@ -258,7 +264,7 @@ export function KinesiologoForm({ open, onOpenChange, kinesiologo }: Kinesiologo
             <div className="space-y-2">
               {DIAS_SEMANA.slice(0, 6).map(dia => {
                 const horario = horarios.find(h => h.dia === dia)
-                
+
                 return (
                   <div key={dia} className="flex items-center gap-4">
                     <div className="w-24">
