@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Check, ChevronLeft, ChevronRight, AlertTriangle, CheckCircle, User, Calendar, Stethoscope, X, RefreshCw } from 'lucide-react'
 import { useData } from '@/lib/data-context'
-import { formatDate, formatDateLong, getDayNameCapitalized, generateTimeSlots, DIAS_SEMANA, isPastDateTime, doTimesOverlap } from '@/lib/date-utils'
+import { formatDate, formatDateLong, getDayNameCapitalized, generateTimeSlots, DIAS_SEMANA, isPastDateTime, doTimesOverlap, getHoursUntil } from '@/lib/date-utils'
 import { generateId } from '@/lib/storage'
 import type { Kinesiologo, Paciente, Turno } from '@/lib/types'
 import { toast } from 'sonner'
@@ -26,6 +26,7 @@ interface NewAppointmentWizardProps {
     kinesiologo?: Kinesiologo | null
   } | null
   turnoToReschedule?: Turno | null
+  onNeedsImmediatePayment?: (turno: Turno) => void
 }
 
 const STEPS = [
@@ -35,7 +36,7 @@ const STEPS = [
   { id: 4, label: 'Confirmación', icon: Check },
 ]
 
-export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turnoToReschedule }: NewAppointmentWizardProps) {
+export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turnoToReschedule, onNeedsImmediatePayment }: NewAppointmentWizardProps) {
   const {
     activeKinesiologos,
     getHorarioByKinesiologo,
@@ -247,6 +248,18 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turn
     })
   }, [selectedKinesiologo, selectedTratamiento, selectedDate, turnos, getHorarioByKinesiologo, getTratamientoByNombre, turnoToReschedule])
 
+  // Check if there's already a turno for this patient+professional+date
+  const duplicateTurno = useMemo(() => {
+    if (!foundPaciente || !selectedKinesiologo || !selectedDate) return null
+    return turnos.find(t =>
+      t.dniPaciente === foundPaciente.dni &&
+      t.dniKinesiologo === selectedKinesiologo.dni &&
+      t.fecha === selectedDate &&
+      t.estado !== 'cancelado' &&
+      (!turnoToReschedule || t.id !== turnoToReschedule.id)
+    ) || null
+  }, [foundPaciente, selectedKinesiologo, selectedDate, turnos, turnoToReschedule])
+
   const canProceed = (step: number): boolean => {
     switch (step) {
       case 1:
@@ -254,6 +267,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turn
       case 2:
         return !!foundPaciente
       case 3:
+        if (duplicateTurno) return false
         const needsOrdenMedica = foundPaciente?.obraSocialRnos && obraSocialCompatible
         return !!selectedDate && !!selectedTime && !!motivoConsulta && (!needsOrdenMedica || !!ordenMedica)
       default:
@@ -266,9 +280,12 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turn
 
     const tratamiento = getTratamientoByNombre(selectedTratamiento)
     const isParticular = !foundPaciente.obraSocialRnos || !obraSocialCompatible
+    const hoursUntil = getHoursUntil(selectedDate, selectedTime)
+    const requiresImmediatePayment = !isRescheduling && hoursUntil < 48
 
+    const turnoId = isRescheduling ? turnoToReschedule!.id : generateId()
     const turno: Turno = {
-      id: isRescheduling ? turnoToReschedule!.id : generateId(),
+      id: turnoId,
       dniPaciente: foundPaciente.dni,
       dniKinesiologo: selectedKinesiologo.dni,
       tratamiento: selectedTratamiento,
@@ -290,6 +307,11 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turn
     // Reset and close
     resetForm()
     onOpenChange(false)
+
+    // If appointment is within 48h, redirect to immediate payment
+    if (requiresImmediatePayment && onNeedsImmediatePayment) {
+      onNeedsImmediatePayment(turno)
+    }
   }
 
   const resetForm = () => {
@@ -318,6 +340,8 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turn
   const tratamiento = getTratamientoByNombre(selectedTratamiento)
   const obraSocial = foundPaciente?.obraSocialRnos ? getObraSocialByRnos(foundPaciente.obraSocialRnos) : null
   const isParticular = !foundPaciente?.obraSocialRnos || !obraSocialCompatible
+  const hoursUntilAppointment = selectedDate && selectedTime ? getHoursUntil(selectedDate, selectedTime) : null
+  const isWithin48h = !isRescheduling && hoursUntilAppointment !== null && hoursUntilAppointment < 48
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) resetForm(); onOpenChange(o) }}>
@@ -673,8 +697,18 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turn
                 })}
               </div>
 
+              {/* Duplicate turno warning */}
+              {duplicateTurno && selectedDate && (
+                <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/30 rounded-lg text-sm">
+                  <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+                  <p className="text-warning">
+                    <span className="font-medium">{foundPaciente?.nombre} {foundPaciente?.apellido}</span> ya tiene un turno asignado con este profesional para el {formatDateLong(selectedDate)} a las <span className="font-medium">{duplicateTurno.hora}</span>. No se puede registrar otro turno para el mismo día.
+                  </p>
+                </div>
+              )}
+
               {/* Time Slots */}
-              {selectedDate && (
+              {selectedDate && !duplicateTurno && (
                 <div className="space-y-2 pt-4 border-t">
                   <Label>Horarios disponibles - {formatDateLong(selectedDate)}</Label>
                   <div className="flex flex-wrap gap-2">
@@ -774,7 +808,7 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turn
                       ${tratamiento?.precioPorSesion.toLocaleString('es-AR')}
                     </span>
                   </div>
-                  {isParticular && (
+                  {isParticular && !isWithin48h && (
                     <p className="text-sm text-warning mt-2">
                       Debe abonarse 48hs antes para confirmar el turno
                     </p>
@@ -785,6 +819,15 @@ export function NewAppointmentWizard({ open, onOpenChange, preselectedSlot, turn
                     </p>
                   )}
                 </div>
+
+                {isWithin48h && (
+                  <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+                    <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                    <p className="text-sm text-destructive">
+                      <span className="font-medium">Pago inmediato requerido.</span> Este turno es dentro de las próximas 48 horas, por lo que se deberá proceder al cobro al confirmar el turno.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}

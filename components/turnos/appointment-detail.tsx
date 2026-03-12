@@ -28,6 +28,7 @@ export function AppointmentDetail({ turno, open, onOpenChange, onReschedule }: A
   const [showPaymentForm, setShowPaymentForm] = useState(false)
   const [monto, setMonto] = useState('')
   const [coseguro, setCoseguro] = useState('0')
+  const [montoError, setMontoError] = useState('')
 
   const paciente = getPacienteByDni(turno.dniPaciente)
   const kinesiologo = getKinesiologoByDni(turno.dniKinesiologo)
@@ -66,31 +67,63 @@ export function AppointmentDetail({ turno, open, onOpenChange, onReschedule }: A
   }
 
   const handleRegisterPayment = () => {
-    const cobroData = {
-      id: Math.random().toString(36).substr(2, 9),
-      turnoId: turno.id,
-      monto: parseInt(monto) || 0,
-      coseguro: parseInt(coseguro) || 0,
-      fecha: new Date().toISOString().split('T')[0],
-      reembolso: null,
-      estado: 'cobrado' as const
+    const montoNum = parseInt(monto) || 0
+    const coseguroNum = parseInt(coseguro) || 0
+    const precioTotal = tratamiento?.precioPorSesion || 0
+    const alreadyPaid = cobro?.monto || 0
+    const remaining = precioTotal - alreadyPaid
+    const isPaid = montoNum >= remaining
+
+    // Validate: amount cannot exceed pending balance
+    if (montoNum > remaining) {
+      setMontoError(`El monto no puede superar el saldo pendiente ($${remaining.toLocaleString('es-AR')})`)
+      return
+    }
+    setMontoError('')
+
+    if (cobro) {
+      // Update existing cobro accumulating the new payment
+      saveCobro({
+        ...cobro,
+        monto: cobro.monto + montoNum,
+        fecha: new Date().toISOString().split('T')[0]
+      })
+    } else {
+      saveCobro({
+        id: Math.random().toString(36).substr(2, 9),
+        turnoId: turno.id,
+        monto: montoNum,
+        coseguro: coseguroNum,
+        fecha: new Date().toISOString().split('T')[0],
+        reembolso: null,
+        estado: 'cobrado' as const
+      })
     }
 
-    saveCobro(cobroData)
-
-    // Update appointment status to confirmed if it was pending
-    if (turno.estado === 'pendiente') {
+    // Update appointment status to confirmed when fully paid (regardless of current estado)
+    if (isPaid) {
       saveTurno({ ...turno, estado: 'confirmado' })
     }
 
-    toast.success('Pago registrado con éxito')
+    if (isPaid) {
+      toast.success('Pago registrado con éxito')
+    } else {
+      const saldo = remaining - montoNum
+      toast.warning('Pago parcial registrado', {
+        description: `Queda un saldo pendiente de $${saldo.toLocaleString('es-AR')}`
+      })
+    }
     setShowPaymentForm(false)
   }
 
   const handleOpenPayment = () => {
     if (tratamiento) {
-      setMonto(tratamiento.precioPorSesion.toString())
+      // Pre-fill with remaining balance (full price if no cobro, remainder if partial)
+      const alreadyPaid = cobro?.monto || 0
+      const remaining = tratamiento.precioPorSesion - alreadyPaid
+      setMonto(remaining.toString())
     }
+    setMontoError('')
     setShowPaymentForm(true)
   }
 
@@ -171,10 +204,18 @@ export function AppointmentDetail({ turno, open, onOpenChange, onReschedule }: A
                   <span className="text-lg font-bold text-primary">
                     ${tratamiento?.precioPorSesion.toLocaleString('es-AR')}
                   </span>
-                  {cobro && (
+                  {cobro && tratamiento && cobro.monto >= tratamiento.precioPorSesion && (
                     <Badge variant="default" className="bg-success">Pagado</Badge>
                   )}
+                  {cobro && tratamiento && cobro.monto < tratamiento.precioPorSesion && (
+                    <Badge variant="outline" className="text-warning border-warning">Pago parcial</Badge>
+                  )}
                 </div>
+                {cobro && tratamiento && cobro.monto < tratamiento.precioPorSesion && (
+                  <p className="text-sm text-warning mt-1">
+                    Pagado: ${cobro.monto.toLocaleString('es-AR')} — Saldo pendiente: ${(tratamiento.precioPorSesion - cobro.monto).toLocaleString('es-AR')}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -193,15 +234,18 @@ export function AppointmentDetail({ turno, open, onOpenChange, onReschedule }: A
             )}
 
             {/* Actions */}
-            {turno.estado !== 'cancelado' && !cobro && !showPaymentForm && (
+            {turno.estado !== 'cancelado' && !showPaymentForm && (
               <div className="flex gap-2 pt-4 border-t">
-                <Button
-                  className="flex-1 bg-success hover:bg-success/90"
-                  onClick={handleOpenPayment}
-                >
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  Registrar cobro
-                </Button>
+                {/* Show 'Registrar cobro' if no cobro, or 'Pagar saldo' if partial */}
+                {(!cobro || (tratamiento && cobro.monto < tratamiento.precioPorSesion)) && (
+                  <Button
+                    className="flex-1 bg-success hover:bg-success/90"
+                    onClick={handleOpenPayment}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    {cobro ? 'Pagar saldo' : 'Registrar cobro'}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   className="flex-1"
@@ -216,7 +260,7 @@ export function AppointmentDetail({ turno, open, onOpenChange, onReschedule }: A
                   onClick={() => setShowCancelConfirm(true)}
                 >
                   <X className="h-4 w-4 mr-2" />
-                  Cancelar
+                  Cancelar turno
                 </Button>
               </div>
             )}
@@ -225,21 +269,33 @@ export function AppointmentDetail({ turno, open, onOpenChange, onReschedule }: A
               <div className="space-y-4 pt-4 border-t animate-in fade-in slide-in-from-top-2">
                 <div className="flex items-center gap-2 text-primary font-medium">
                   <DollarSign className="h-5 w-5" />
-                  Registrar Cobro
+                  {cobro ? 'Pagar saldo pendiente' : 'Registrar Cobro'}
                 </div>
+                {cobro && tratamiento && cobro.monto < tratamiento.precioPorSesion && (
+                  <p className="text-sm text-muted-foreground">
+                    Ya se registró un pago de ${cobro.monto.toLocaleString('es-AR')}. Ingresá el monto restante (${(tratamiento.precioPorSesion - cobro.monto).toLocaleString('es-AR')}).
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Monto cobrado *</Label>
+                    <Label>Monto a cobrar *</Label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                       <Input
                         value={monto}
-                        onChange={(e) => setMonto(e.target.value.replace(/\D/g, ''))}
-                        className="pl-7"
+                        onChange={(e) => {
+                          setMonto(e.target.value.replace(/\D/g, ''))
+                          setMontoError('')
+                        }}
+                        className={`pl-7 ${montoError ? 'border-destructive' : ''}`}
                       />
                     </div>
+                    {montoError && (
+                      <p className="text-xs text-destructive">{montoError}</p>
+                    )}
                   </div>
-                  {!paciente?.obraSocialRnos ? null : (
+                  {/* Only show coseguro field if no prior cobro exists (first payment) */}
+                  {!paciente?.obraSocialRnos || cobro ? null : (
                     <div className="space-y-2">
                       <Label>Coseguro</Label>
                       <div className="relative">
@@ -259,7 +315,7 @@ export function AppointmentDetail({ turno, open, onOpenChange, onReschedule }: A
                     className="flex-1"
                     onClick={() => setShowPaymentForm(false)}
                   >
-                    Cancelar
+                    Volver
                   </Button>
                   <Button
                     className="flex-1 bg-success hover:bg-success/90"
@@ -269,27 +325,6 @@ export function AppointmentDetail({ turno, open, onOpenChange, onReschedule }: A
                     Confirmar Pago
                   </Button>
                 </div>
-              </div>
-            )}
-
-            {turno.estado !== 'cancelado' && (cobro || showPaymentForm) && !showPaymentForm && (
-              <div className="flex gap-2 pt-4 border-t">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => onReschedule(turno)}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Reprogramar
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={() => setShowCancelConfirm(true)}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Cancelar
-                </Button>
               </div>
             )}
           </div>

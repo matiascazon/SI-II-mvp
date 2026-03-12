@@ -41,6 +41,7 @@ export function AgendaView({ onNewAppointment }: AgendaViewProps) {
   const [selectedTurno, setSelectedTurno] = useState<Turno | null>(null)
   const [reschedulingTurno, setReschedulingTurno] = useState<Turno | null>(null)
   const [showNewAppointment, setShowNewAppointment] = useState(false)
+  const [immediatePaymentTurno, setImmediatePaymentTurno] = useState<Turno | null>(null)
   const [preselectedSlot, setPreselectedSlot] = useState<{
     fecha: string
     hora: string
@@ -362,6 +363,19 @@ export function AgendaView({ onNewAppointment }: AgendaViewProps) {
         />
       )}
 
+      {/* Immediate payment after wizard: open detail for newly created turno */}
+      {immediatePaymentTurno && (
+        <AppointmentDetail
+          turno={immediatePaymentTurno}
+          open={true}
+          onOpenChange={(open) => { if (!open) setImmediatePaymentTurno(null) }}
+          onReschedule={(t) => {
+            setImmediatePaymentTurno(null)
+            setReschedulingTurno(t)
+          }}
+        />
+      )}
+
       {/* New Appointment Wizard / Reschedule Wizard */}
       {(showNewAppointment || reschedulingTurno) && (
         <NewAppointmentWizard
@@ -369,11 +383,13 @@ export function AgendaView({ onNewAppointment }: AgendaViewProps) {
           onOpenChange={(open) => {
             if (!open) {
               setShowNewAppointment(false)
+              setPreselectedSlot(null)
               setReschedulingTurno(null)
             }
           }}
           preselectedSlot={preselectedSlot}
           turnoToReschedule={reschedulingTurno}
+          onNeedsImmediatePayment={(turno) => setImmediatePaymentTurno(turno)}
         />
       )}
     </div>

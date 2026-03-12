@@ -192,66 +192,66 @@ export const seedData: ClinicData = {
       "id": "1",
       "dniPaciente": "30000001",
       "dniKinesiologo": "25000001",
-      "fecha": "2026-03-09",
+      "fecha": "2026-03-13",
       "hora": "09:00",
       "tratamiento": "Neurorrehabilitación",
       "motivoConsulta": "Control post-operatorio",
       "ordenMedica": null,
       "estado": "confirmado",
       "esParticular": false,
-      "createdAt": "2026-03-01T10:00:00Z"
+      "createdAt": "2026-03-10T10:00:00Z"
     },
     {
       "id": "2",
       "dniPaciente": "33000002",
       "dniKinesiologo": "25000001",
-      "fecha": "2026-03-09",
+      "fecha": "2026-03-13",
       "hora": "10:00",
       "tratamiento": "Movimiento Eficiente",
       "motivoConsulta": "Dolor lumbar crónico",
       "ordenMedica": null,
       "estado": "confirmado",
       "esParticular": true,
-      "createdAt": "2026-03-01T11:00:00Z"
+      "createdAt": "2026-03-10T11:00:00Z"
     },
     {
       "id": "3",
       "dniPaciente": "35000003",
       "dniKinesiologo": "28000002",
-      "fecha": "2026-03-10",
+      "fecha": "2026-03-13",
       "hora": "15:00",
       "tratamiento": "Osteopatía",
       "motivoConsulta": "Cervicalgia",
       "ordenMedica": null,
       "estado": "pendiente",
       "esParticular": false,
-      "createdAt": "2026-03-02T15:00:00Z"
+      "createdAt": "2026-03-10T15:00:00Z"
     },
     {
       "id": "4",
       "dniPaciente": "38000004",
       "dniKinesiologo": "30000003",
-      "fecha": "2026-03-11",
+      "fecha": "2026-03-13",
       "hora": "10:00",
       "tratamiento": "Kinesiología Deportiva",
       "motivoConsulta": "Esguince de tobillo",
       "ordenMedica": null,
       "estado": "confirmado",
       "esParticular": false,
-      "createdAt": "2026-03-03T09:00:00Z"
+      "createdAt": "2026-03-10T09:00:00Z"
     },
     {
       "id": "5",
       "dniPaciente": "40000005",
       "dniKinesiologo": "32000004",
-      "fecha": "2026-03-12",
+      "fecha": "2026-03-13",
       "hora": "11:00",
       "tratamiento": "Drenaje Linfático",
       "motivoConsulta": "Edema en miembros inferiores",
       "ordenMedica": null,
       "estado": "confirmado",
       "esParticular": false,
-      "createdAt": "2026-03-04T08:00:00Z"
+      "createdAt": "2026-03-10T08:00:00Z"
     }
   ],
   "cobros": [
@@ -260,7 +260,7 @@ export const seedData: ClinicData = {
       "turnoId": "1",
       "monto": 15000,
       "coseguro": 0,
-      "fecha": "2026-03-09",
+      "fecha": "2026-03-13",
       "reembolso": null,
       "estado": "cobrado"
     },
@@ -269,7 +269,7 @@ export const seedData: ClinicData = {
       "turnoId": "2",
       "monto": 10000,
       "coseguro": 0,
-      "fecha": "2026-03-09",
+      "fecha": "2026-03-13",
       "reembolso": null,
       "estado": "cobrado"
     },
@@ -278,7 +278,7 @@ export const seedData: ClinicData = {
       "turnoId": "4",
       "monto": 12000,
       "coseguro": 0,
-      "fecha": "2026-03-11",
+      "fecha": "2026-03-13",
       "reembolso": null,
       "estado": "cobrado"
     },
@@ -287,7 +287,7 @@ export const seedData: ClinicData = {
       "turnoId": "5",
       "monto": 11000,
       "coseguro": 0,
-      "fecha": "2026-03-12",
+      "fecha": "2026-03-13",
       "reembolso": null,
       "estado": "cobrado"
     }
